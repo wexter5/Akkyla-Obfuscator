@@ -1,4 +1,4 @@
-# Akkyla Obfuscator
+# Java Obfuscator
 
 Обфускатор Java байт-кода на основе ASM с GUI интерфейсом.
 

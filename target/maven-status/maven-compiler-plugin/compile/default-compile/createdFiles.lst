@@ -1,0 +1,8 @@
+com\obfuscator\transformers\RenamingTransformer.class
+com\obfuscator\ui\ObfuscatorGUI.class
+com\obfuscator\ObfuscatorConfig.class
+com\obfuscator\transformers\StringEncryptionTransformer.class
+com\obfuscator\transformers\RenamingTransformer$1.class
+com\obfuscator\Main.class
+com\obfuscator\Transformer.class
+com\obfuscator\transformers\FlowObfuscationTransformer.class
