@@ -1,142 +1,147 @@
-# Java Obfuscator
+# Minecraft Mod Obfuscator
 
-Обфускатор Java байт-кода на основе ASM с GUI интерфейсом.
-
-![Java](https://img.shields.io/badge/Java-17+-orange.svg)
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
+Профессиональный JAR обфускатор для Fabric/Forge Minecraft модов с графическим интерфейсом.
 
 ## Возможности
 
-| Трансформер | Описание | Статус |
-|-------------|----------|--------|
-| **Renaming** | Переименование классов, полей и методов в `a`, `b`, `c`... | ✅ |
-| **String Encryption** | XOR шифрование строк + Base64 кодирование | ✅ |
-| **Flow Obfuscation** | Добавление фиктивных инструкций для запутывания | ✅ |
+### Модули обфускации
 
-## Быстрый старт
+1. **String Encryption** (Шифрование строк)
+   - Находит все LDC инструкции со строковыми константами
+   - Шифрует строки используя XOR с динамическим ключом + Base64
+   - Добавляет скрытый метод дешифровки в каждый класс
+   - Уникальный ключ для каждой строки
 
-### GUI режим (рекомендуется)
+2. **Control Flow Obfuscation** (Обфускация потока управления)
+   - Opaque Predicates - условия, которые всегда истинны/ложны, но сложны для анализа
+   - Code Jumbling - перемешивание независимых блоков кода
+   - Вставка мусорных переходов и меток
+   - NOP инструкции для усложнения анализа
 
-```bash
-java -jar target/java-obfuscator-1.0-SNAPSHOT.jar
+3. **Decompiler Crasher** (Ломание декомпиляторов)
+   - Удаление LineNumberTable и LocalVariableTable
+   - Добавление SYNTHETIC флагов ко всем методам и полям
+   - Jump into the middle of instructions (легально для JVM, сложно для декомпиляторов)
+   - Дублирующиеся блоки мёртвого кода
+   - Избыточные проверки null
+
+### Совместимость с Fabric/Forge
+
+- Автоматическое исключение Mixin классов
+- Распознавание аннотаций @Inject, @ModifyConstant, @Redirect и других
+- Исключение пакетов org.spongepowered.asm.mixin
+- Сохранение работоспособности модов после обфускации
+
+## Структура проекта
+
+```
+obfuscator/
+├── pom.xml                          # Maven конфигурация
+├── src/main/java/com/obfuscator/
+│   ├── core/
+│   │   ├── Transformer.java         # Интерфейс трансформера
+│   │   ├── ObfuscationContext.java  # Контекст обфускации
+│   │   ├── ObfuscationOptions.java  # Настройки обфускации
+│   │   └── Obfuscator.java          # Главный класс обфускатора
+│   ├── transformers/
+│   │   ├── StringEncryptionTransformer.java    # Шифрование строк
+│   │   ├── ControlFlowObfuscator.java          # Обфускация потока управления
+│   │   └── DecompilerCrasherTransformer.java   # Ломание декомпиляторов
+│   ├── gui/
+│   │   └── ObfuscatorGUI.java       # Графический интерфейс
+│   └── util/
+│       ├── JarUtils.java            # Утилиты для работы с JAR
+│       ├── MixinUtils.java          # Утилиты для Mixin
+│       └── StringEncryptionUtils.java # Утилиты шифрования
+└── README.md
 ```
 
-Или просто дважды кликните по JAR файлу в проводнике.
-
-### CLI режим
-
-```bash
-java -jar target/java-obfuscator-1.0-SNAPSHOT.jar -i input.jar -o output.jar
-```
-
-## Использование GUI
-
-1. **Выберите входной JAR файл** — нажмите кнопку `...` рядом с полем "Input JAR"
-2. **Выберите выходной файл** — заполнится автоматически или укажите вручную
-3. **Настройте трансформеры**:
-   - ☑ Renaming — переименование классов/полей/методов
-   - ☑ String Encryption — шифрование строковых литералов
-   - ☑ Flow Obfuscation — запутывание потока управления
-   - Flow complexity — уровень запутывания (1-10)
-4. **Нажмите "▶ Start Obfuscation"**
-5. **Следите за прогрессом** в окне логов
-
-![GUI Interface](docs/gui-screenshot.png)
-
-## Опции CLI
-
-| Опция | Описание |
-|-------|----------|
-| `-i, --input` | Входной JAR файл (обязательно) |
-| `-o, --output` | Выходной JAR файл (обязательно) |
-| `--no-rename` | Отключить переименование |
-| `--no-string` | Отключить шифрование строк |
-| `--no-flow` | Отключить flow obfuscation |
-| `-gui` | Запустить GUI интерфейс |
-| `-h, --help` | Показать справку |
-
-### Примеры
-
-```bash
-# Полная обфускация
-java -jar obfuscator.jar -i app.jar -o app-obf.jar
-
-# Только шифрование строк
-java -jar obfuscator.jar -i app.jar -o app-obf.jar --no-rename --no-flow
-
-# Запуск GUI
-java -jar obfuscator.jar -gui
-```
-
-## Сборка из исходников
+## Сборка и запуск
 
 ### Требования
-- Java 17+
+- Java 17 или выше
 - Maven 3.6+
+
+### Сборка
 
 ```bash
 cd obfuscator
 mvn clean package
 ```
 
-JAR файл будет создан в `target/java-obfuscator-1.0-SNAPSHOT.jar`
+Обфускатор будет создан в `target/minecraft-obfuscator-1.0.0-all.jar`
 
-## Структура проекта
+### Запуск
 
-```
-obfuscator/
-├── src/main/java/com/obfuscator/
-│   ├── Main.java                    # CLI интерфейс
-│   ├── ObfuscatorConfig.java        # Конфигурация
-│   ├── Transformer.java             # Интерфейс трансформера
-│   └── transformers/
-│       ├── RenamingTransformer.java      # Переименование
-│       ├── StringEncryptionTransformer.java  # Шифрование строк
-│       └── FlowObfuscationTransformer.java   # Flow obfuscation
-├── src/main/java/com/obfuscator/ui/
-│   └── ObfuscatorGUI.java           # GUI интерфейс
-├── test/                            # Тестовые классы
-├── pom.xml                          # Maven конфиг
-└── README.md                        # Документация
+```bash
+java -jar target/minecraft-obfuscator-1.0.0-all.jar
 ```
 
-## Как это работает
+## Использование
 
-### 1. Renaming Transformer
-- Сканирует все классы в JAR
-- Создаёт маппинг имён (original -> obfuscated)
-- Переименовывает классы, поля, методы используя ASM Remapper
-- Сохраняет `main` метод и конструкторы без изменений
+1. Запустите обфускатор
+2. Выберите входной JAR файл (ваш мод)
+3. Выберите выходной JAR файл
+4. Настройте опции обфускации:
+   - String Encryption - шифрование строковых констант
+   - Control Flow Obfuscation - обфускация потока управления
+   - Decompiler Crasher - техники для ломания декомпиляторов
+   - Exclude Mixin Classes - исключить Mixin классы (рекомендуется)
+5. Добавьте пакеты/классы для исключения в список исключений
+6. Нажмите "Process"
 
-### 2. String Encryption Transformer
-- Находит все `LDC` инструкции со строками
-- Шифрует строки: XOR с случайным ключом + Base64
-- Заменяет на вызов `StringDecryptor.decrypt()`
-- Вставляет класс-дешифратор в JAR
+### Рекомендуемые исключения для Minecraft модов
 
-### 3. Flow Obfuscation Transformer
-- Добавляет `NOP` инструкции после каждой 5-й операции
-- Усложняет статический анализ байт-кода
-- Не влияет на выполнение программы
+```
+com/yourmod/mixins/
+org/spongepowered/asm/mixin/
+net/minecraftforge/event/
+net/fabricmc/fabric/api/
+```
 
-## Ограничения
+## Технические детали
 
-- Не поддерживает классы с signature verification
-- Может ломать reflection-зависимый код
-- Flow obfuscation упрощён (NOP injection)
+### Алгоритм шифрования строк
 
-## Планы на будущее
+```java
+// Шифрование
+encrypted[i] = (original[i] ^ (key + i))
+result = Base64.encode(encrypted)
 
-- [ ] Control Flow Flattening (state machine)
-- [ ] Dead code injection
-- [ ] Arithmetic obfuscation
-- [ ] Anti-decompiler tricks
-- [ ] Конфигурация через YAML/JSON
+// Дешифрование (в рантайме)
+decoded = Base64.decode(encrypted)
+original[i] = (decoded[i] ^ (key + i))
+```
+
+### Используемые библиотеки
+
+- **OW2 ASM 9.6** - манипуляция байт-кодом Java
+- **Swing** - графический интерфейс
+
+### Transformer Pattern
+
+Каждый тип обфускации реализует интерфейс `Transformer`:
+
+```java
+public interface Transformer {
+    boolean transform(ClassNode classNode, ObfuscationContext context);
+    String getName();
+    boolean shouldTransform(String className, ObfuscationContext context);
+}
+```
+
+## Предупреждения
+
+⚠️ **Важно:**
+- Всегда тестируйте обфусцированный мод перед выпуском
+- Некоторые анти-чит системы могут обнаруживать обфусцированные моды
+- Не обфусцируйте классы с @Mod аннотациями
+- Сохраняйте резервные копии оригинальных файлов
 
 ## Лицензия
 
-MIT License
+MIT License - свободное использование и модификация.
 
 ## Авторы
 
-Создано с помощью Qwen Code
+Разработано для образовательных целей и защиты авторских модов.
