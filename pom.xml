@@ -5,22 +5,22 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.obfuscator</groupId>
-    <artifactId>java-obfuscator</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <artifactId>minecraft-obfuscator</artifactId>
+    <version>1.0.0</version>
     <packaging>jar</packaging>
 
-    <name>Java Obfuscator</name>
-    <description>Custom Java bytecode obfuscator based on ASM</description>
+    <name>Minecraft Mod Obfuscator</name>
+    <description>Professional JAR obfuscator for Fabric/Forge Minecraft mods</description>
 
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.source>16</maven.compiler.source>
+        <maven.compiler.target>16</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <asm.version>9.6</asm.version>
     </properties>
 
     <dependencies>
-        <!-- ASM Core -->
+        <!-- OW2 ASM для манипуляции байт-кодом -->
         <dependency>
             <groupId>org.ow2.asm</groupId>
             <artifactId>asm</artifactId>
@@ -42,23 +42,18 @@
             <version>${asm.version}</version>
         </dependency>
 
-        <!-- Command Line Parser -->
+        <!-- JUnit для тестирования -->
         <dependency>
-            <groupId>com.beust</groupId>
-            <artifactId>jcommander</artifactId>
-            <version>1.82</version>
-        </dependency>
-
-        <!-- Logging -->
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-simple</artifactId>
-            <version>2.0.9</version>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.0</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <!-- Плагин компиляции -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -68,6 +63,8 @@
                     <target>17</target>
                 </configuration>
             </plugin>
+
+            <!-- Плагин сборки JAR с зависимостями -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -81,19 +78,22 @@
                         <configuration>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.obfuscator.Main</mainClass>
-                                </transformer>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.obfuscator.ui.ObfuscatorGUI</mainClass>
-                                    <manifestEntries>
-                                        <GUI-Stub>com.obfuscator.ui.ObfuscatorGUI</GUI-Stub>
-                                    </manifestEntries>
+                                    <mainClass>com.obfuscator.gui.ObfuscatorGUI</mainClass>
                                 </transformer>
                             </transformers>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <shadedClassifierName>all</shadedClassifierName>
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+
+            <!-- Плагин ресурсов -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.3.1</version>
             </plugin>
         </plugins>
     </build>

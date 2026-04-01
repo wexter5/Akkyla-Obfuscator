@@ -1,224 +1,169 @@
 package com.obfuscator.transformers;
 
-import com.obfuscator.ObfuscatorConfig;
-import com.obfuscator.Transformer;
-import org.objectweb.asm.Label;
+import com.obfuscator.core.ObfuscationContext;
+import com.obfuscator.core.Transformer;
+import com.obfuscator.util.StringEncryptionUtils;
 import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
-import java.util.Map;
-import java.util.Random;
+import static org.objectweb.asm.Opcodes.ASM9;
+
+import java.util.*;
 
 /**
- * Трансформер для шифрования строковых литералов
- * Использует XOR шифрование + Base64 кодирование
+ * Трансформер для шифрования строковых констант.
+ * Версия 2 - исправленная.
  */
-public class StringEncryptionTransformer implements Transformer {
+public class StringEncryptionTransformer implements Transformer, Opcodes {
     
-    private final ObfuscatorConfig config;
-    private final Random random = new Random();
+    private static final String DECRYPT_METHOD_NAME = "decodeString";
+    private static final String DECRYPT_METHOD_DESC = "(Ljava/lang/String;)Ljava/lang/String;";
+    private static final String DECRYPT_METHOD_SIG = "(Ljava/lang/String;)Ljava/lang/String;";
     
-    // Класс для解密 строк (будет добавлен в JAR)
-    private static final String DECRYPTOR_CLASS = "com/obfuscator/StringDecryptor";
-    
-    public StringEncryptionTransformer(ObfuscatorConfig config) {
-        this.config = config;
-    }
+    private int encryptedStringCount = 0;
     
     @Override
     public String getName() {
-        return "StringEncryptionTransformer";
+        return "StringEncryption";
     }
     
     @Override
-    public boolean transform(ClassNode classNode, Map<String, ClassNode> classes) {
-        boolean modified = false;
-        
-        // Пропускаем класс-дешифратор
-        if (classNode.name.equals(DECRYPTOR_CLASS)) {
+    public boolean shouldTransform(String className, ObfuscationContext context) {
+        if (context.getOptions().isExcludeMixins()) {
+            if (className.contains("mixin") || className.endsWith("Mixin")) {
+                return false;
+            }
+        }
+        return !context.isExcluded(className);
+    }
+    
+    @Override
+    public boolean transform(ClassNode classNode, ObfuscationContext context) {
+        if (!shouldTransform(classNode.name, context)) {
             return false;
         }
         
+        boolean changed = false;
+        Map<AbstractInsnNode, String> stringLiterals = new HashMap<>();
+        
         for (MethodNode method : classNode.methods) {
-            if (decryptStrings(method)) {
-                modified = true;
-            }
-        }
-        
-        return modified;
-    }
-    
-    /**
-     * Замена всех строковых литералов на зашифрованные
-     */
-    private boolean decryptStrings(MethodNode method) {
-        boolean modified = false;
-        InsnList newInstructions = new InsnList();
-        
-        for (AbstractInsnNode insn : method.instructions.toArray()) {
-            if (insn.getOpcode() == Opcodes.LDC) {
-                LdcInsnNode ldc = (LdcInsnNode) insn;
-                if (ldc.cst instanceof String) {
-                    String original = (String) ldc.cst;
-                    
-                    // Пропускаем короткие строки (имена полей, методы)
-                    if (original.length() < 2) {
-                        newInstructions.add(insn);
-                        continue;
+            if (method.instructions == null) continue;
+            if ((method.access & (ACC_ABSTRACT | ACC_NATIVE)) != 0) continue;
+            
+            for (AbstractInsnNode insn : method.instructions) {
+                if (insn.getOpcode() == LDC) {
+                    LdcInsnNode ldc = (LdcInsnNode) insn;
+                    if (ldc.cst instanceof String) {
+                        String str = (String) ldc.cst;
+                        if (str.length() > 1 && !str.startsWith("(") && !str.startsWith("L") && !str.startsWith("[")) {
+                            stringLiterals.put(insn, str);
+                        }
                     }
-                    
-                    // Шифруем строку
-                    String encrypted = encryptString(original);
-                    
-                    // Заменяем LDC на вызов decrypt
-                    newInstructions.add(new LdcInsnNode(encrypted));
-                    newInstructions.add(new MethodInsnNode(
-                        Opcodes.INVOKESTATIC,
-                        DECRYPTOR_CLASS,
-                        "decrypt",
-                        "(Ljava/lang/String;)Ljava/lang/String;",
-                        false
-                    ));
-                    
-                    modified = true;
-                    continue;
                 }
             }
-            newInstructions.add(insn);
         }
         
-        if (modified) {
-            method.instructions = newInstructions;
+        if (!stringLiterals.isEmpty()) {
+            addDecryptMethod(classNode);
+            
+            for (MethodNode method : classNode.methods) {
+                if (method.instructions == null) continue;
+                if ((method.access & (ACC_ABSTRACT | ACC_NATIVE)) != 0) continue;
+                
+                List<AbstractInsnNode> toReplace = new ArrayList<>();
+                for (AbstractInsnNode insn : method.instructions) {
+                    if (stringLiterals.containsKey(insn)) {
+                        toReplace.add(insn);
+                    }
+                }
+                
+                for (AbstractInsnNode insn : toReplace) {
+                    String original = stringLiterals.get(insn);
+                    replaceLdcWithDecrypt(classNode, method, insn, original);
+                    changed = true;
+                    encryptedStringCount++;
+                }
+            }
         }
         
-        return modified;
+        return changed;
     }
     
-    /**
-     * XOR шифрование + Base64
-     */
-    private String encryptString(String input) {
-        byte[] bytes = input.getBytes(StandardCharsets.UTF_8);
-        byte key = (byte) (random.nextInt(254) + 1); // Ключ 1-254
-        
-        // XOR с ключом
-        for (int i = 0; i < bytes.length; i++) {
-            bytes[i] = (byte) (bytes[i] ^ key);
+    private void addDecryptMethod(ClassNode classNode) {
+        for (MethodNode method : classNode.methods) {
+            if (DECRYPT_METHOD_NAME.equals(method.name) && DECRYPT_METHOD_DESC.equals(method.desc)) {
+                return;
+            }
         }
         
-        // Добавляем ключ в начало и кодируем Base64
-        byte[] result = new byte[bytes.length + 1];
-        result[0] = key;
-        System.arraycopy(bytes, 0, result, 1, bytes.length);
+        MethodNode decryptMethod = new MethodNode(
+            ASM9,
+            ACC_PRIVATE | ACC_STATIC | ACC_FINAL | ACC_SYNTHETIC,
+            DECRYPT_METHOD_NAME,
+            DECRYPT_METHOD_DESC,
+            null,
+            null
+        );
         
-        return Base64.getEncoder().encodeToString(result);
-    }
-    
-    /**
-     * Создать класс-дешифратор
-     */
-    public static ClassNode createDecryptorClass() {
-        ClassNode classNode = new ClassNode();
-        classNode.version = 52; // Java 8
-        classNode.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER;
-        classNode.name = DECRYPTOR_CLASS;
-        classNode.superName = "java/lang/Object";
+        // Максимально простой байт-код:
+        // ALOAD 0
+        // INVOKESTATIC java/util/Base64.getDecoder()Ljava/util/Base64$Decoder;
+        // ALOAD 0
+        // INVOKEINTERFACE java/util/Base64$Decoder.decode(Ljava/lang/String;)[B
+        // LDC "UTF-8"
+        // INVOKESPECIAL java/lang/String.<init>([BLjava/lang/String;)V
+        // ARETURN
         
-        // Конструктор
-        MethodNode init = new MethodNode(
-            Opcodes.ACC_PUBLIC,
+        decryptMethod.instructions.add(new VarInsnNode(ALOAD, 0));
+        decryptMethod.instructions.add(new MethodInsnNode(
+            INVOKESTATIC,
+            "java/util/Base64",
+            "getDecoder",
+            "()Ljava/util/Base64$Decoder;",
+            false
+        ));
+        decryptMethod.instructions.add(new VarInsnNode(ALOAD, 0));
+        decryptMethod.instructions.add(new MethodInsnNode(
+            INVOKEINTERFACE,
+            "java/util/Base64$Decoder",
+            "decode",
+            "(Ljava/lang/String;)[B",
+            true
+        ));
+        decryptMethod.instructions.add(new LdcInsnNode("UTF-8"));
+        decryptMethod.instructions.add(new MethodInsnNode(
+            INVOKESPECIAL,
+            "java/lang/String",
             "<init>",
-            "()V",
-            null,
-            null
-        );
-        init.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        init.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false));
-        init.instructions.add(new InsnNode(Opcodes.RETURN));
-        init.maxStack = 1;
-        init.maxLocals = 1;
-        classNode.methods.add(init);
+            "([BLjava/lang/String;)V",
+            false
+        ));
+        decryptMethod.instructions.add(new InsnNode(ARETURN));
         
-        // Метод decrypt - упрощённая версия без try-catch
-        MethodNode decrypt = new MethodNode(
-            Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
-            "decrypt",
-            "(Ljava/lang/String;)Ljava/lang/String;",
-            null,
-            null
-        );
+        // Не устанавливаем maxStack/maxLocals - ClassWriter.COMPUTE_FRAMES сделает это
         
-        // Локальные переменные
-        LabelNode start = new LabelNode();
-        LabelNode loopCondition = new LabelNode();
-        LabelNode loopEnd = new LabelNode();
+        classNode.methods.add(decryptMethod);
+    }
+    
+    private void replaceLdcWithDecrypt(ClassNode classNode, MethodNode method, AbstractInsnNode ldcNode, String original) {
+        InsnList replacement = new InsnList();
         
-        decrypt.instructions.add(start);
+        String encrypted = StringEncryptionUtils.encrypt(original, 0);
         
-        // Base64 decode - getDecoder() is static method
-        decrypt.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/util/Base64", "getDecoder", "()Ljava/util/Base64$Decoder;", false));
-        decrypt.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0)); // Push the input string
-        decrypt.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "java/util/Base64$Decoder", "decode", "(Ljava/lang/String;)[B", false));
-        decrypt.instructions.add(new VarInsnNode(Opcodes.ASTORE, 1)); // encryptedBytes
+        replacement.add(new LdcInsnNode(encrypted));
+        replacement.add(new MethodInsnNode(
+            INVOKESTATIC,
+            classNode.name,
+            DECRYPT_METHOD_NAME,
+            DECRYPT_METHOD_DESC,
+            false
+        ));
         
-        // Получить ключ (первый байт)
-        decrypt.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
-        decrypt.instructions.add(new InsnNode(Opcodes.ICONST_0));
-        decrypt.instructions.add(new InsnNode(Opcodes.BALOAD));
-        decrypt.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2)); // key
-        
-        // Создать массив для расшифрованных данных (без ключа)
-        decrypt.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
-        decrypt.instructions.add(new InsnNode(Opcodes.ARRAYLENGTH));
-        decrypt.instructions.add(new InsnNode(Opcodes.ICONST_1));
-        decrypt.instructions.add(new InsnNode(Opcodes.ISUB));
-        decrypt.instructions.add(new IntInsnNode(Opcodes.NEWARRAY, Opcodes.T_BYTE));
-        decrypt.instructions.add(new VarInsnNode(Opcodes.ASTORE, 3)); // decryptedBytes
-        
-        // Цикл XOR расшифровки
-        decrypt.instructions.add(new InsnNode(Opcodes.ICONST_0));
-        decrypt.instructions.add(new VarInsnNode(Opcodes.ISTORE, 4)); // i = 0
-        
-        decrypt.instructions.add(loopCondition);
-        decrypt.instructions.add(new VarInsnNode(Opcodes.ILOAD, 4));
-        decrypt.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
-        decrypt.instructions.add(new InsnNode(Opcodes.ARRAYLENGTH));
-        decrypt.instructions.add(new JumpInsnNode(Opcodes.IF_ICMPGE, loopEnd));
-        
-        // Тело цикла: decryptedBytes[i] = (byte) (encryptedBytes[i+1] ^ key)
-        decrypt.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
-        decrypt.instructions.add(new VarInsnNode(Opcodes.ILOAD, 4));
-        decrypt.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
-        decrypt.instructions.add(new VarInsnNode(Opcodes.ILOAD, 4));
-        decrypt.instructions.add(new InsnNode(Opcodes.ICONST_1));
-        decrypt.instructions.add(new InsnNode(Opcodes.IADD));
-        decrypt.instructions.add(new InsnNode(Opcodes.BALOAD));
-        decrypt.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
-        decrypt.instructions.add(new InsnNode(Opcodes.IXOR));
-        decrypt.instructions.add(new InsnNode(Opcodes.I2B));
-        decrypt.instructions.add(new InsnNode(Opcodes.BASTORE));
-        
-        // i++
-        decrypt.instructions.add(new IincInsnNode(4, 1));
-        decrypt.instructions.add(new JumpInsnNode(Opcodes.GOTO, loopCondition));
-        
-        decrypt.instructions.add(loopEnd);
-        
-        // Создать String из decryptedBytes
-        decrypt.instructions.add(new TypeInsnNode(Opcodes.NEW, "java/lang/String"));
-        decrypt.instructions.add(new InsnNode(Opcodes.DUP));
-        decrypt.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
-        decrypt.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, "java/lang/String", "<init>", "([B)V", false));
-        decrypt.instructions.add(new InsnNode(Opcodes.ARETURN));
-        
-        decrypt.maxStack = 4;
-        decrypt.maxLocals = 5;
-        
-        classNode.methods.add(decrypt);
-        
-        return classNode;
+        method.instructions.insert(ldcNode, replacement);
+        method.instructions.remove(ldcNode);
+    }
+    
+    public int getEncryptedStringCount() {
+        return encryptedStringCount;
     }
 }
