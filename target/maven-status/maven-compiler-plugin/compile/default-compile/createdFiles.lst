@@ -1,0 +1,17 @@
+com\obfuscator\util\MixinUtils.class
+com\obfuscator\transformers\ClassRenamerTransformer$ObfRemapper.class
+com\obfuscator\core\Transformer.class
+com\obfuscator\core\Obfuscator.class
+com\obfuscator\core\Obfuscator$ProgressListener.class
+com\obfuscator\transformers\StringEncryptionTransformer.class
+com\obfuscator\util\FileDialogUtil.class
+com\obfuscator\util\StringEncryptionUtils.class
+com\obfuscator\transformers\DecompilerCrasherTransformer.class
+com\obfuscator\util\JarUtils.class
+com\obfuscator\gui\ObfuscatorGUI.class
+com\obfuscator\util\DummyClassGenerator.class
+com\obfuscator\core\ObfuscationContext.class
+com\obfuscator\transformers\ControlFlowObfuscator.class
+com\obfuscator\transformers\DummyClassTransformer.class
+com\obfuscator\core\ObfuscationOptions.class
+com\obfuscator\transformers\ClassRenamerTransformer.class
