@@ -1,4 +1,4 @@
-# Minecraft Mod Obfuscator
+# Akkyla Obfuscator
 
 Профессиональный JAR обфускатор для Fabric/Forge Minecraft модов с графическим интерфейсом.
 
